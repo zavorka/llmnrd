@@ -30,8 +30,7 @@ enum iface_event_type {
 typedef void (*iface_event_handler_t)(enum iface_event_type, unsigned char af,
 				      unsigned int ifindex);
 
-int iface_init(int sock, const char *iface, bool ipv6,
-		iface_event_handler_t event_handler);
+int iface_init(int sock, const char *iface, iface_event_handler_t event_handler);
 int iface_recv(int sock);
 
 size_t iface_addr_lookup(unsigned int ifindex, unsigned char family,

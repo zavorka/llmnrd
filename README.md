@@ -9,7 +9,7 @@ currently only supports Linux, as it uses the
 [netlink kernel interface](http://man7.org/linux/man-pages/man7/netlink.7.html).
 
 llmnrd will respond to name resolution queries sent by Windows clients in
-networks where no DNS server is available. It supports both IPv4 and IPv6.
+networks where no DNS server is available. It only supports IPv4.
 
 Installation
 ============
@@ -55,13 +55,6 @@ To run llmnrd in the default mode (listening on UDP port 5355):
 
 ```
 $ llmnrd
-```
-
-By default, LLMNR name resolution is only possible over IPv4. To additionally
-enable LLMNR name resolution over IPv6 use:
-
-```
-$ llmnrd -6
 ```
 
 Use `llmnrd --help` to show additional usage information.

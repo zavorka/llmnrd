@@ -38,7 +38,6 @@
 #include "llmnr-packet.h"
 #include "llmnr.h"
 
-static bool llmnr_ipv6 = false;
 /* Host name in DNS name format (length octet + name + 0 byte) */
 static char llmnr_hostname[LLMNR_LABEL_MAX_SIZE + 2];
 
@@ -49,10 +48,9 @@ void llmnr_set_hostname(const char *hostname)
 	llmnr_hostname[LLMNR_LABEL_MAX_SIZE + 1] = '\0';
 }
 
-void llmnr_init(const char *hostname, bool ipv6)
+void llmnr_init(const char *hostname)
 {
 	llmnr_set_hostname(hostname);
-	llmnr_ipv6 = ipv6;
 }
 
 static bool llmnr_name_matches(const uint8_t *query)
@@ -100,16 +98,9 @@ static void llmnr_respond(unsigned int ifindex, const struct llmnr_hdr *hdr,
 	if (qclass != LLMNR_QCLASS_IN)
 		return;
 
-	/* No AAAA responses if IPv6 is disabled */
-	if (!llmnr_ipv6 && qtype == LLMNR_QTYPE_AAAA)
-		return;
-
 	switch (qtype) {
 	case LLMNR_QTYPE_A:
 		family = AF_INET;
-		break;
-	case LLMNR_QTYPE_AAAA:
-		family = AF_INET6;
 		break;
 	case LLMNR_QTYPE_ANY:
 		family = AF_UNSPEC;
@@ -124,10 +115,10 @@ static void llmnr_respond(unsigned int ifindex, const struct llmnr_hdr *hdr,
 		return;
 
 	/*
-	 * This is the max response length (i.e. using all IPv6 addresses and
+	 * This is the max response length (i.e. using all  addresses and
 	 * no message compression). We might not use all of it.
 	 */
-	response_len = n * (1 + name_len + 1 + 2 + 2 + 4 + 2 + sizeof(struct in6_addr));
+	response_len = n * (1 + name_len + 1 + 2 + 2 + 4 + 2 + sizeof(struct in_addr));
 	p = pkt_alloc(sizeof(*hdr) + query_len + response_len);
 
 	/* fill the LLMNR header */
@@ -154,11 +145,6 @@ static void llmnr_respond(unsigned int ifindex, const struct llmnr_hdr *hdr,
 			addr = &sin->sin_addr;
 			addr_size = sizeof(sin->sin_addr);
 			type = LLMNR_TYPE_A;
-		} else if (addrs[i].ss_family == AF_INET6) {
-			struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&addrs[i];
-			addr = &sin6->sin6_addr;
-			addr_size = sizeof(sin6->sin6_addr);
-			type = LLMNR_TYPE_AAAA;
 		} else
 			continue;
 
@@ -253,9 +239,6 @@ void llmnr_recv(int sock)
 		if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO) {
 			struct in_pktinfo *in = (struct in_pktinfo *)CMSG_DATA(cmsg);
 			ifindex = in->ipi_ifindex;
-		} else if (cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_PKTINFO) {
-			struct in6_pktinfo *in6 = (struct in6_pktinfo *)CMSG_DATA(cmsg);
-			ifindex = in6->ipi6_ifindex;
 		}
 	}
 

@@ -98,64 +98,7 @@ err:
 	return -1;
 }
 
-int socket_open_ipv6(uint16_t port, const char *iface)
-{
-	int sock, opt_pktinfo;
-	struct sockaddr_in6 sa;
-
-	sock = socket(AF_INET6, SOCK_DGRAM, 0);
-	if (sock < 0) {
-		log_err("Failed to open UDP socket: %s\n", strerror(errno));
-		return -1;
-	}
-
-	/* pass pktinfo struct on received packets */
-#if defined(IPV6_RECVPKTINFO)
-	opt_pktinfo = IPV6_RECVPKTINFO;
-#elif defined(IPV6_PKTINFO)
-	opt_pktinfo = IPV6_PKTINFO;
-#endif
-	if (setsockopt(sock, IPPROTO_IPV6, opt_pktinfo, &YES, sizeof(YES)) < 0) {
-		log_err("Failed to set IPv6 packet info socket option: %s\n", strerror(errno));
-		goto err;
-	}
-
-	/* RFC 4795, section 2.5 recommends to set TTL to 255 for UDP */
-	if (setsockopt(sock, IPPROTO_IPV6, IPV6_UNICAST_HOPS, &TTL, sizeof(TTL)) < 0) {
-		log_err("Failed to set IPv6 unicast hops socket option: %s\n", strerror(errno));
-		goto err;
-	}
-
-	if (setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &TTL, sizeof(TTL)) < 0) {
-		log_err("Failed to set IPv6 multicast hops socket option: %s\n", strerror(errno));
-		goto err;
-	}
-
-	/* IPv6 only socket */
-	if (setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &YES, sizeof(YES)) < 0) {
-		log_err("Failed to set IPv6 only socket option: %s\n", strerror(errno));
-		goto err;
-	}
-
-	socket_bind_to_device(sock, iface);
-
-	/* bind the socket */
-	memset(&sa, 0, sizeof(sa));
-	sa.sin6_family = AF_INET6;
-	sa.sin6_port = htons(port);
-
-	if (bind(sock, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-		log_err("Failed to bind() socket: %s\n", strerror(errno));
-		goto err;
-	}
-
-	return sock;
-err:
-	close(sock);
-	return -1;
-}
-
-int socket_open_rtnl(bool ipv6)
+int socket_open_rtnl(void)
 {
 	int sock;
 	struct sockaddr_nl sa;
@@ -172,11 +115,8 @@ int socket_open_rtnl(bool ipv6)
 	 * listen for following events:
 	 * - network interface create/delete/up/down
 	 * - IPv4 address add/delete
-	 * - IPv6 address add/delete (if enabled)
 	 */
 	sa.nl_groups = RTMGRP_LINK | RTMGRP_IPV4_IFADDR;
-	if (ipv6)
-		sa.nl_groups |= RTMGRP_IPV6_IFADDR;
 
 	if (bind(sock, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
 		log_err("Failed to bind() netlink socket: %s\n", strerror(errno));
@@ -209,34 +149,6 @@ int socket_mcast_group_ipv4(int sock, unsigned int ifindex, bool join)
 		 * already part of */
 		if (!join || errno != EADDRINUSE) {
 			log_err("Failed to %s IPv4 multicast group membership on interface %s: %s\n",
-				join ? "add" : "drop", if_indextoname(ifindex, ifname),
-				strerror(errno));
-			return -1;
-		}
-	}
-
-	return 0;
-}
-
-int socket_mcast_group_ipv6(int sock, unsigned int ifindex, bool join)
-{
-	struct ipv6_mreq mreq6;
-	char ifname[IF_NAMESIZE];
-
-	/* silently ignore, we might not be listening on an IPv6 socket */
-	if (sock < 0)
-		return -1;
-
-	memset(&mreq6, 0, sizeof(mreq6));
-	mreq6.ipv6mr_interface = ifindex;
-	inet_pton(AF_INET6, LLMNR_IPV6_MCAST_ADDR, &mreq6.ipv6mr_multiaddr);
-
-	if (setsockopt(sock, IPPROTO_IPV6, join ? IPV6_ADD_MEMBERSHIP : IPV6_DROP_MEMBERSHIP,
-		       &mreq6, sizeof(mreq6)) < 0) {
-		/* ignore error if we attempt to join a group the interface is
-		 * already part of */
-		if (!join || errno != EADDRINUSE) {
-			log_err("Failed to %s IPv6 multicast group membership on interface %s: %s\n",
 				join ? "add" : "drop", if_indextoname(ifindex, ifname),
 				strerror(errno));
 			return -1;

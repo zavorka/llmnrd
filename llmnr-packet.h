@@ -26,7 +26,6 @@
 #include "compiler.h"
 
 #define LLMNR_IPV4_MCAST_ADDR	"224.0.0.252"
-#define LLMNR_IPV6_MCAST_ADDR	"ff02:0:0:0:0:0:1:3"
 
 #define LLMNR_UDP_PORT		5355
 
@@ -61,11 +60,9 @@ struct llmnr_hdr {
 #define LLMNR_TYPE_MINFO	14
 #define LLMNR_TYPE_MX		15
 #define LLMNR_TYPE_TXT		16
-#define LLMNR_TYPE_AAAA		28	/* RFC 3596 */
 
 /* QTYPE values according to RFC 1035, section 3.2.3 */
 #define LLMNR_QTYPE_A		LLMNR_TYPE_A
-#define LLMNR_QTYPE_AAAA	LLMNR_TYPE_AAAA
 #define LLMNR_QTYPE_ANY		255
 
 /* CLASS values */

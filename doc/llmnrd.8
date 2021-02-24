@@ -8,7 +8,7 @@ llmnrd \- LLMNR (RFC 4795) responder daemon
 is a user space daemon implementing the Link-Local Multicast Name Resolution
 (LLMNR) protocol according to RFC 4795. It will respond to name resolution
 queries sent by Windows clients in networks where no DNS server is available.
-Both IPv4 and IPv6 are supported.
+Only IPv4 is supported.
 .SH OPTIONS
 .TP
 .B -H <name>, --hostname <name>
@@ -20,9 +20,6 @@ Bind socket to a specific interface, e.g. eth0, wlan0.
 .B -p <num>, --port <num>
 Set port number to listen on. By default the port 5355 as specified in RFC 4795 is
 used.
-.TP
-.B -6, --ipv6
-Enable LLMNR name resolution over IPv6.
 .TP
 .B -d, --daemonize
 Run llmnrd as daemon in the background.

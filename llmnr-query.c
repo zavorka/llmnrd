@@ -42,7 +42,7 @@
 /* Maximum possible size RFC 4795, section 2.1 */
 static const size_t LLMNR_QUERY_PKT_BUF_SIZE = 9194;
 
-static const char *short_ops = "c:d:i:I:t:T:6ChV";
+static const char *short_ops = "c:d:i:I:t:T:ChV";
 static const struct option long_opts[] = {
 	{ "count",	required_argument,	NULL, 'c' },
 	{ "id",		required_argument,	NULL, 'd' },
@@ -51,7 +51,6 @@ static const struct option long_opts[] = {
 	{ "timeout",	required_argument,	NULL, 't' },
 	{ "type",	required_argument,	NULL, 'T' },
 	{ "conflict",	no_argument,		NULL, 'C' },
-	{ "ipv6",	no_argument,		NULL, '6' },
 	{ "help",	no_argument,		NULL, 'h' },
 	{ "version",	no_argument,		NULL, 'V' },
 	{ NULL,		0,			NULL, 0 },
@@ -66,8 +65,7 @@ static void __noreturn usage_and_exit(int status)
 			"  -i, --interval NUM    interval between queries in ms (default: 500)\n"
 			"  -I, --interface NAME  send multicast over specified interface\n"
 			"  -t, --timeout NUM     time to wait for reply in ms (default: 1000)\n"
-			"  -T, --type TYPE       set query type; must be one of A, AAAA, ANY (default: ANY)\n"
-			"  -6, --ipv6            send queries over IPv6\n"
+			"  -T, --type TYPE       set query type; must be one of A, ANY (default: ANY)\n"
 			"  -C, --conflict        set conflict bit in query\n"
 			"  -h, --help            show this help and exit\n"
 			"  -V, --version         show version information and exit\n");
@@ -88,8 +86,6 @@ static const char *query_type(uint16_t qtype)
 	switch (qtype) {
 	case LLMNR_QTYPE_A:
 		return "A";
-	case LLMNR_QTYPE_AAAA:
-		return "AAAA";
 	case LLMNR_QTYPE_ANY:
 		return "ANY";
 	default:
@@ -105,8 +101,8 @@ int main(int argc, char **argv)
 	unsigned long i, id = 0, count = 1, interval_ms = 500, timeout_ms = 1000;
 	uint16_t flags = 0;
 	uint16_t qtype = LLMNR_QTYPE_ANY;
-	bool ipv6 = false;
 	struct pkt *p;
+	struct ip_mreqn mreq;
 	unsigned int ifindex = 0;
 	static const int TTL = 255;
 
@@ -133,17 +129,12 @@ int main(int argc, char **argv)
 		case 'T':
 			if (xstreq("A", optarg))
 				qtype = LLMNR_QTYPE_A;
-			else if (xstreq("AAAA", optarg))
-				qtype = LLMNR_QTYPE_AAAA;
 			else if (xstreq("ANY", optarg))
 				qtype = LLMNR_QTYPE_ANY;
 			else {
 				printf("Invalid query type: %s\n", optarg);
 				usage_and_exit(EXIT_FAILURE);
 			}
-			break;
-		case '6':
-			ipv6 = true;
 			break;
 		case 'V':
 			version_and_exit();
@@ -165,34 +156,21 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	sock = socket(ipv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
+	sock = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sock < 0) {
 		log_err("Failed to open UDP socket: %s\n", strerror(errno));
 		return -1;
 	}
 
-	if (ipv6) {
-		/* RFC 4795, section 2.5 recommends to set TTL to 255 for UDP */
-		if (setsockopt(sock, IPPROTO_IPV6, IPV6_UNICAST_HOPS, &TTL, sizeof(TTL)) < 0) {
-			log_err("Failed to set IPv6 unicast hops socket option: %s\n", strerror(errno));
-			goto err;
-		}
+	/* RFC 4795, section 2.5 recommends to set TTL to 255 for UDP */
+	if (setsockopt(sock, IPPROTO_IP, IP_TTL, &TTL, sizeof(TTL)) < 0) {
+		log_err("Failed to set IPv4 unicast TTL socket option: %s\n", strerror(errno));
+		goto err;
+	}
 
-		if (setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &TTL, sizeof(TTL)) < 0) {
-			log_err("Failed to set IPv6 multicast hops socket option: %s\n", strerror(errno));
-			goto err;
-		}
-	} else {
-		/* RFC 4795, section 2.5 recommends to set TTL to 255 for UDP */
-		if (setsockopt(sock, IPPROTO_IP, IP_TTL, &TTL, sizeof(TTL)) < 0) {
-			log_err("Failed to set IPv4 unicast TTL socket option: %s\n", strerror(errno));
-			goto err;
-		}
-
-		if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, &TTL, sizeof(TTL)) < 0) {
-			log_err("Failed to set IPv4 multicast TTL socket option: %s\n", strerror(errno));
-			goto err;
-		}
+	if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, &TTL, sizeof(TTL)) < 0) {
+		log_err("Failed to set IPv4 multicast TTL socket option: %s\n", strerror(errno));
+		goto err;
 	}
 
 	if (iface != NULL) {
@@ -203,23 +181,13 @@ int main(int argc, char **argv)
 			goto err;
 		}
 
-		if (ipv6) {
-			if (setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_IF, &ifindex, sizeof(ifindex)) < 0) {
-				log_err("Failed to set interface '%s' for IPv6 multicast socket: %s\n",
-					iface, strerror(errno));
-				goto err;
-			}
-		} else {
-			struct ip_mreqn mreq;
+		memset(&mreq, 0, sizeof(mreq));
+		mreq.imr_ifindex = ifindex;
 
-			memset(&mreq, 0, sizeof(mreq));
-			mreq.imr_ifindex = ifindex;
-
-			if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_IF, &mreq, sizeof(mreq)) < 0) {
-				log_err("Failed to set interface '%s' for IPv4 multicast socket: %s\n",
-					iface, strerror(errno));
-				goto err;
-			}
+		if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_IF, &mreq, sizeof(mreq)) < 0) {
+			log_err("Failed to set interface '%s' for IPv4 multicast socket: %s\n",
+				iface, strerror(errno));
+			goto err;
 		}
 	}
 
@@ -233,10 +201,9 @@ int main(int argc, char **argv)
 		socklen_t sst_len;
 		struct iovec iov[1];
 		struct msghdr msg;
-		struct in6_pktinfo ipi6;
-		uint8_t c[CMSG_SPACE(sizeof(ipi6))];
 		size_t query_pkt_len;
 		fd_set rfds;
+		struct sockaddr_in *sin;
 		struct timeval tv;
 		int ret;
 
@@ -258,39 +225,16 @@ int main(int argc, char **argv)
 		memset(&sst, 0, sizeof(sst));
 		memset(&iov, 0, sizeof(iov));
 		memset(&msg, 0, sizeof(msg));
-		memset(&ipi6, 0, sizeof(ipi6));
 
-		if (ipv6) {
-			struct sockaddr_in6 *sin6 = (struct sockaddr_in6*)&sst;
-			struct cmsghdr *cmsg;
+		sin = (struct sockaddr_in *)&sst;
 
-			sin6->sin6_family = AF_INET6;
-			sin6->sin6_port = htons(LLMNR_UDP_PORT);
-			if (inet_pton(AF_INET6, LLMNR_IPV6_MCAST_ADDR, &sin6->sin6_addr) != 1) {
-				log_err("Failed to convert IPv6 address: %s\n", strerror(errno));
-				break;
-			}
-			sst_len = sizeof(*sin6);
-
-			ipi6.ipi6_ifindex = ifindex;
-			msg.msg_control = c;
-			msg.msg_controllen = sizeof(c);
-			cmsg = CMSG_FIRSTHDR(&msg);
-			cmsg->cmsg_level = IPPROTO_IPV6;
-			cmsg->cmsg_type = IPV6_PKTINFO;
-			cmsg->cmsg_len = CMSG_LEN(sizeof(ipi6));
-			memcpy(CMSG_DATA(cmsg), &ipi6, sizeof(ipi6));
-		} else {
-			struct sockaddr_in *sin = (struct sockaddr_in *)&sst;
-
-			sin->sin_family = AF_INET;
-			sin->sin_port = htons(LLMNR_UDP_PORT);
-			if (inet_pton(AF_INET, LLMNR_IPV4_MCAST_ADDR, &sin->sin_addr) != 1) {
-				log_err("Failed to convert IPv4 address: %s\n", strerror(errno));
-				break;
-			}
-			sst_len = sizeof(*sin);
+		sin->sin_family = AF_INET;
+		sin->sin_port = htons(LLMNR_UDP_PORT);
+		if (inet_pton(AF_INET, LLMNR_IPV4_MCAST_ADDR, &sin->sin_addr) != 1) {
+			log_err("Failed to convert IPv4 address: %s\n", strerror(errno));
+			break;
 		}
+		sst_len = sizeof(*sin);
 
 		iov[0].iov_base = p->data;
 		iov[0].iov_len = pkt_len(p);
@@ -339,7 +283,7 @@ int main(int argc, char **argv)
 
 			for (j = 0; j < ancount; ++j) {
 				uint8_t nl = pkt_put_extract_u8(p);
-				char addr[INET6_ADDRSTRLEN + 1];
+				char addr[INET_ADDRSTRLEN + 1];
 				uint16_t type, clss, addr_size;
 				uint32_t ttl;
 				char name[LLMNR_LABEL_MAX_SIZE + 1];
@@ -370,8 +314,6 @@ int main(int argc, char **argv)
 
 				if (addr_size == sizeof(struct in_addr)) {
 					af = AF_INET;
-				} else if (addr_size == sizeof(struct in6_addr)) {
-					af = AF_INET6;
 				} else {
 					log_warn("Unexpected address size received: %d\n", addr_size);
 					break;
@@ -380,7 +322,7 @@ int main(int argc, char **argv)
 				memcpy(&sst, pkt_put(p, addr_size), addr_size);
 				if (!inet_ntop(af, &sst, addr, ARRAY_SIZE(addr)))
 					strncpy(addr, "<invalid>", sizeof(addr));
-				addr[INET6_ADDRSTRLEN] = '\0';
+				addr[INET_ADDRSTRLEN] = '\0';
 
 				log_info("LLMNR response: %s IN %s %s (TTL %d)\n", name, query_type(type), addr, ttl);
 			}

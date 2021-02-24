@@ -4,8 +4,8 @@ llmnr-query \- LLMNR (RFC 4795) query tool
 .SH SYNOPSIS
 \fBllmnr-query\fR [\fIoptions\fR] \fIname\fR
 .SH DESCRIPTION
-Send LLMNR queries to the LLMNR multicast address (224.0.0.252 for IPv4,
-ff02:0:0:0:0:0:1:3 for IPv6). \fIname\fR specifies the hostname to query.
+Send LLMNR queries to the LLMNR multicast address (224.0.0.252).
+\fIname\fR specifies the hostname to query.
 .SH OPTIONS
 .TP
 .B -c <num>, --count <num>
@@ -24,10 +24,7 @@ Send multicast query over specified interface, e.g. eth0, wlan0.
 Set time to wait for reply in milliseconds (default: 1000).
 .TP
 .B -T <type>, --type <type>
-Set query type. Must be one of A, AAAA, ANY (default: ANY).
-.TP
-.B -6, --ipv6
-Send queries over IPv6.
+Set query type. Must be one of A, ANY (default: ANY).
 .TP
 .B -h, --help
 Show usage information.

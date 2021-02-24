@@ -46,15 +46,13 @@
 
 static bool llmnrd_running = true;
 static int llmnrd_sock_ipv4 = -1;
-static int llmnrd_sock_ipv6 = -1;
 static int llmnrd_fd_hostname = -1;
 
-static const char *short_opts = "H:i:p:6dshV";
+static const char *short_opts = "H:i:p:dshV";
 static const struct option long_opts[] = {
 	{ "hostname",	required_argument,	NULL, 'H' },
 	{ "interface",  required_argument,	NULL, 'i' },
 	{ "port",	required_argument,	NULL, 'p' },
-	{ "ipv6",	no_argument,		NULL, '6' },
 	{ "daemonize",	no_argument,		NULL, 'd' },
 	{ "syslog",	no_argument,		NULL, 's' },
 	{ "help",	no_argument,		NULL, 'h' },
@@ -69,7 +67,6 @@ static void __noreturn usage_and_exit(int status)
 			"  -H, --hostname NAME  set hostname to respond with (default: system hostname)\n"
 			"  -i, --interface DEV  bind socket to a specific interface, e.g. eth0\n"
 			"  -p, --port NUM       set port number to listen on (default: %d)\n"
-			"  -6, --ipv6           enable LLMNR name resolution over IPv6\n"
 			"  -d, --daemonize      run as daemon in the background\n"
 			"  -s, --syslog         send all log output to syslog\n"
 			"  -h, --help           show this help and exit\n"
@@ -125,9 +122,6 @@ static void iface_event_handle(enum iface_event_type type, unsigned char af,
 	switch (af) {
 	case AF_INET:
 		socket_mcast_group_ipv4(llmnrd_sock_ipv4, ifindex, type == IFACE_ADD);
-		break;
-	case AF_INET6:
-		socket_mcast_group_ipv6(llmnrd_sock_ipv6, ifindex, type == IFACE_ADD);
 		break;
 	default:
 		/* ignore */
@@ -186,7 +180,7 @@ int main(int argc, char **argv)
 {
 	int c, ret = -1;
 	long num_arg;
-	bool daemonize = false, ipv6 = false;
+	bool daemonize = false;
 	char *hostname = NULL;
 	char *iface = NULL;
 	uint16_t port = LLMNR_UDP_PORT;
@@ -218,9 +212,6 @@ int main(int argc, char **argv)
 				return EXIT_FAILURE;
 			}
 			port = num_arg;
-			break;
-		case '6':
-			ipv6 = true;
 			break;
 		case 'V':
 			version_and_exit();
@@ -265,25 +256,17 @@ int main(int argc, char **argv)
 	if (llmnrd_sock_ipv4 < 0)
 		goto out;
 
-	if (ipv6) {
-		llmnrd_sock_ipv6 = socket_open_ipv6(port, iface);
-		if (llmnrd_sock_ipv6 < 0)
-			goto out;
-	}
-
-	llmnrd_sock_rtnl = socket_open_rtnl(ipv6);
+	llmnrd_sock_rtnl = socket_open_rtnl();
 	if (llmnrd_sock_rtnl < 0)
 		goto out;
 
-	llmnr_init(hostname, ipv6);
+	llmnr_init(hostname);
 
-	ret = iface_init(llmnrd_sock_rtnl, iface, ipv6, &iface_event_handle);
+	ret = iface_init(llmnrd_sock_rtnl, iface, &iface_event_handle);
 	if (ret < 0)
 		goto out;
 
 	nfds = max(llmnrd_sock_ipv4, llmnrd_sock_rtnl);
-	if (llmnrd_sock_ipv6 >= 0)
-		nfds = max(nfds, llmnrd_sock_ipv6);
 	if (llmnrd_fd_hostname >= 0)
 		nfds = max(nfds, llmnrd_fd_hostname);
 	nfds += 1;
@@ -294,8 +277,6 @@ int main(int argc, char **argv)
 		FD_ZERO(&rfds);
 		FD_SET(llmnrd_sock_ipv4, &rfds);
 		FD_SET(llmnrd_sock_rtnl, &rfds);
-		if (llmnrd_sock_ipv6 >= 0)
-			FD_SET(llmnrd_sock_ipv6, &rfds);
 
 		FD_ZERO(&efds);
 		if (llmnrd_fd_hostname >= 0)
@@ -315,8 +296,6 @@ int main(int argc, char **argv)
 				iface_recv(llmnrd_sock_rtnl);
 			if (FD_ISSET(llmnrd_sock_ipv4, &rfds))
 				llmnr_recv(llmnrd_sock_ipv4);
-			if (llmnrd_sock_ipv6 >= 0 && FD_ISSET(llmnrd_sock_ipv6, &rfds))
-				llmnr_recv(llmnrd_sock_ipv6);
 			if (llmnrd_fd_hostname >= 0 && FD_ISSET(llmnrd_fd_hostname, &efds))
 				hostname_change_handle(hostname, MAXHOSTNAMELEN);
 		}
@@ -328,8 +307,6 @@ int main(int argc, char **argv)
 out:
 	if (llmnrd_sock_rtnl >= 0)
 		close(llmnrd_sock_rtnl);
-	if (llmnrd_sock_ipv6 >= 0)
-		close(llmnrd_sock_ipv6);
 	if (llmnrd_sock_ipv4 >= 0)
 		close(llmnrd_sock_ipv4);
 	free(hostname);

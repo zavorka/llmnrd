@@ -90,11 +90,6 @@ static bool iface_record_addr_eq(const struct sockaddr_storage *addr1,
 		const struct sockaddr_in *sin2 = (const struct sockaddr_in *)addr2;
 
 		return memcmp(&sin1->sin_addr, &sin2->sin_addr, sizeof(sin1->sin_addr)) == 0;
-	} else if (family == AF_INET6) {
-		const struct sockaddr_in6 *sin1 = (const struct sockaddr_in6 *)addr1;
-		const struct sockaddr_in6 *sin2 = (const struct sockaddr_in6 *)addr2;
-
-		return memcmp(&sin1->sin6_addr, &sin2->sin6_addr, sizeof(sin1->sin6_addr)) == 0;
 	} else {
 		/* This should never happen */
 		log_warn("Unsupported address family: %d\n", family);
@@ -160,9 +155,6 @@ static inline void fill_sockaddr_storage(struct sockaddr_storage *sst,
 	if (family == AF_INET) {
 		struct sockaddr_in *sin = (struct sockaddr_in *)sst;
 		memcpy(&sin->sin_addr, addr, sizeof(sin->sin_addr));
-	} else if (family == AF_INET6) {
-		struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)sst;
-		memcpy(&sin6->sin6_addr, addr, sizeof(sin6->sin6_addr));
 	}
 }
 
@@ -319,8 +311,7 @@ static void iface_rtnl_enumerate(int sock, uint16_t type, unsigned char family)
 		log_err("Failed to enumerate rtnl interfaces: %s\n", strerror(errno));
 }
 
-int iface_init(int sock, const char *iface, bool ipv6,
-		iface_event_handler_t event_handler)
+int iface_init(int sock, const char *iface, iface_event_handler_t event_handler)
 {
 	INIT_LIST_HEAD(&iface_list_head);
 	iface_event_handler = event_handler;
@@ -334,8 +325,6 @@ int iface_init(int sock, const char *iface, bool ipv6,
 
 	/* send RTM_GETADDR request to initially populate the interface list */
 	iface_rtnl_enumerate(sock, RTM_GETADDR, AF_INET);
-	if (ipv6)
-		iface_rtnl_enumerate(sock, RTM_GETADDR, AF_INET6);
 	return 0;
 }
 
